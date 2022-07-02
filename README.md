@@ -2,7 +2,9 @@
 
 Choice-Based Conjoint Analysis
 
-A total of 250 people has participated in this choice experiment. You can access this simulated data through the “tablet_wide.RDS” file which is attached along with this document.  Each of these participants evaluated 5 different choice sets (tasks). In each task, participants needed to choose the best and the worst tablets among the three alternatives (i.e., stored in the selected and rejected columns respectively). The alternatives are different because of three attributes:
+A total of 250 people has participated in this choice experiment. You can access this simulated data through the “tablet_wide.RDS” file which is attached along with this document.  Each of these participants evaluated 5 different choice sets (tasks). In each task, participants needed to choose the best and the worst tablets among the three alternatives (i.e., stored in the selected and rejected columns respectively). 
+
+The alternatives are different because of three attributes:
 • Attribute 1: screen size with 3 levels, namely 9.7, 10.5, and 12.9 (inch)
 • Attribute 2: storage capacity with 4 levels, namely 64, 128, 256, and 512 (GB)
 • Attribute 3: price with 4 levels, namely 399, 599, 799, and 949 (USD)
