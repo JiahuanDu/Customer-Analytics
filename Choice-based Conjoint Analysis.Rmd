@@ -1,0 +1,333 @@
+---
+title: "Choice-based Conjoint Analysis"
+author: "Jiahuan Du"
+date: "2022/7/2"
+output: html_document
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(mlogit)
+```
+
+
+We start with exploring the data
+
+```{r}
+tablet_wide <- read.csv("tablet_wide.csv")
+length(unique(tablet_wide$resp_id))  #determine number of respondents
+```
+There are 250 respondents participated in the survey.
+
+```{r,comment = "",message = FALSE, warning = FALSE, echo = FALSE, results='hide'}
+#show the first six rows of the data set
+head(tablet_wide,6)
+```
+
+```{r}
+nrow(tablet_wide)
+```
+250 respndents, each respondents have 5 choice set, 5*250 = 1250 rows
+```{r}
+#show all coloum names
+colnames(tablet_wide)
+```
+
+As we can see, there are three products and each product have three attributes: screen, price and screen. We will choose "selected" as dependent variable, and choose screen, price, screen as independent variables.
+
+
+Now we split data into train data and test data
+```{r}
+set.seed(12345)
+ind <- sample(1:2, # the group index (1 vs. 2)
+              nrow(tablet_wide), # for how many customers do we need the index
+              replace = T, # reusing the two groups for all customers
+              prob = c(0.7, 0.3))
+estimation <- tablet_wide[ind == 1, ]  #training data
+hold_out <- tablet_wide[ind == 2, ]    #test data
+```
+
+Then we build multinomial regression models. To build the models, we first convert the data.
+```{r}
+estimation_ml <- mlogit.data(estimation,
+                              choice = "selected",
+                              shape = "wide",
+                              varying = 3:11,
+                              id.var = "resp_id",
+                              sep = "_")
+holdout_ml <- mlogit.data(hold_out,
+                             choice = "selected",
+                             shape = "wide",
+                             varying = 3:11,
+                             id.var = "resp_id",
+                             sep = "_")
+```
+
+```{r}
+head(estimation_ml,6)
+```
+
+```{r}
+head(holdout_ml,6)
+```
+As we can see, each row only has one product, and "selected" column turn into bolean variable TRUE/FALSE. Now we build models.
+```{r}
+#linear
+ml_model1 <- mlogit(selected ~ screen + storage + price |0,
+                    data = estimation_ml)
+
+#quadratic
+estimation_ml$screen_sqr <- estimation_ml$screen^2
+estimation_ml$storage_sqr <- estimation_ml$storage^2
+estimation_ml$price_sqr <- estimation_ml$price^2
+
+ml_model2 <- mlogit(selected ~ screen + screen_sqr + storage + storage_sqr + price + price_sqr | 0,
+                    data = estimation_ml)
+
+
+#part_worths
+ml_model3a <- mlogit(selected ~ as.factor(screen) + as.factor(storage) + as.factor(price) | 0,
+                     data = estimation_ml)
+ml_model3b <- mlogit(selected ~ as.factor(screen) + storage + price | 0,
+                                  data = estimation_ml)
+ml_model3c <- mlogit(selected ~ screen + as.factor(storage) + price | 0,
+                     data = estimation_ml)
+ml_model3d <- mlogit(selected ~ screen + storage + as.factor(price) | 0,
+                     data = estimation_ml)
+
+```
+We have build linear pattern, quadratic pattern, and part-worths pattern multinomial regression models using the estimation data. Then we will compare each models.
+
+```{r}
+summary(ml_model2)
+```
+A we can see, for variable screen, the p-value of IV-screen is similar to IV-screen_sqr, but the coefficient of screen is bigger than squared screen, we attribute screen is more likely to have linear relationship with DV-selected.
+For variable storage, the p-value of both IV-storage and IV-storage_sqr are less than 0.05 and have significant influence on DV-selected, but p-value of IV-storage is much smaller than IV-storage_sqr, which means IV-storage has more influence on DV-selected than IV-storage_sqr, so we may conclude that attribute storage is more likely to have linear relationship with DV-selected.
+In terms of price, we can see that only IV-price has p-value less than 0.05 and significant influence on DV-delected, so attribute price has linear relationship with DV-selected.
+As a result, the effect of all three attributes on utility seems to be linear. 
+
+Now we use likelihood ratio test to compare part-worths form models
+```{r}
+lrtest(ml_model3b, ml_model3a) 
+```
+The results of the likelihood ratio test show that the Chi-squared value is 46.364  which is significant at 5% level(p-value = 2.069e-09), meaning that we can reject the null hypothesis, the full model is better than the restricted model.
+
+```{r}
+lrtest(ml_model3c, ml_model3a) 
+```
+The results of the likelihood ratio test show that the Chi-squared value is 82.319  which is significant at 5% level(p-value < 2.2e-16), meaning that we can reject the null hypothesis, the full model is better than the restricted model.
+
+```{r}
+lrtest(ml_model3d, ml_model3a) 
+```
+The results of the likelihood ratio test show that the Chi-squared value is 108.27  which is significant at 5% level(p-value < 2.2e-16), meaning that we can reject the null hypothesis, the full model is better than the restricted model.As a result, the full part-worth model is best among all part-worths models.
+
+Now we compare linear form multinomial regression model with part-worths one.
+```{r}
+AIC(ml_model1,ml_model3a)
+```
+As we can see, the AIC value of linear model(1577.618) is bigger than part-worths model(1468.223), so we can conclude that the full pert-worth model(ml_model3a) is the most appropriate model.
+
+
+# Model Validation
+We now use test data(holdout_ml) to build models.
+```{r}
+#linear
+ml_model1_test <- mlogit(selected ~ screen + storage + price |0,
+                    data = holdout_ml)
+
+#quadratic
+holdout_ml$screen_sqr <- holdout_ml$screen^2
+holdout_ml$storage_sqr <- holdout_ml$storage^2
+holdout_ml$price_sqr <- holdout_ml$price^2
+
+ml_model2_test <- mlogit(selected ~ screen + screen_sqr + storage + storage_sqr + price + price_sqr | 0,
+                    data = holdout_ml)
+
+
+#part_worths
+ml_model3a_test <- mlogit(selected ~ as.factor(screen) + as.factor(storage) + as.factor(price) | 0,
+                     data = holdout_ml)
+ml_model3b_test <- mlogit(selected ~ as.factor(screen) + storage + price | 0,
+                                  data = holdout_ml)
+ml_model3c_test <- mlogit(selected ~ screen + as.factor(storage) + price | 0,
+                     data = holdout_ml)
+ml_model3d_test <- mlogit(selected ~ screen + storage + as.factor(price) | 0,
+                     data =holdout_ml)
+```
+
+Then we compare these models just as what we did with training data models.
+```{r}
+summary(ml_model2_test)
+```
+Just as how we analyze before, now we compare each attribute's p-value with their squared form's p-value, we find that all variables have less than 0.05 p-value, but the linear form variable are all have smaller p-value than their squared form variable. As a result, the effect of all three attributes on utility seems to be linear. 
+
+```{r}
+lrtest(ml_model3c_test, ml_model3a_test) 
+```
+The results of the likelihood ratio test show that the Chi-squared value is 57.226  which is significant at 5% level(p-value = 2.299e-12), meaning that we can reject the null hypothesis, the full model is better than the restricted model.
+```{r }
+lrtest(ml_model3b_test, ml_model3a_test) 
+```
+The results of the likelihood ratio test show that the Chi-squared value is 48.731  which is significant at 5% level(p-value = 6.643e-10), meaning that we can reject the null hypothesis, the full model is better than the restricted model.
+```{r }
+lrtest(ml_model3d_test, ml_model3a_test)
+```
+The results of the likelihood ratio test show that the Chi-squared value is 78.513  which is significant at 5% level(p-value < 2.2e-16), meaning that we can reject the null hypothesis, the full model is better than the restricted model. We get the same result as we did using training data(estimation_ml).
+
+Now we compare linear form with full part-worths model
+```{r}
+AIC(ml_model1_test,ml_model3a_test)
+```
+As we can see, the AIC value of linear model(748.2745) is bigger than part-worths model(667.2778), so we can conclude that the full pert-worth model(ml_model3a_test) is the most appropriate model.
+
+In conclusion, we get the the same result as we got using the training data, which is that the full part-worths pattern multinomial regression model is the most appropriate model.
+
+Finally, we use the whole data set to estimate the selected model which is full part-worths pattern multinomial regression model.
+
+We first convert the whole data set
+```{r}
+estimation_whole <- mlogit.data(tablet_wide,
+                              choice = "selected",
+                              shape = "wide",
+                              varying = 3:11,
+                              id.var = "resp_id",
+                              sep = "_")
+```
+
+Build model based on the whole data set.
+```{r}
+ml_model <- mlogit(selected ~ as.factor(screen) + as.factor(storage) + as.factor(price) | 0,
+                     data = estimation_whole)
+```
+
+Estimate the model
+```{r}
+summary(ml_model)
+```
+
+```{r}
+# store 4 utility levels of storage capacity
+utility_storage <- c(0, parEst[3:5])
+# plot the utility scores
+# create a scatter plot
+plot(x = utility_storage, 
+type = "b", 
+lwd = "2", 
+col = "red", 
+xlab = "storage capacity/GB", 
+ylab = "Utility", 
+ylim = c(0, 2), 
+xaxt = "n", 
+main = "Storage Capacity") 
+# here I label the tick marks of the x-axis
+axis(1, 
+at = 1:4, 
+labels = c("64", "128", "256","512")) 
+```
+
+```{r}
+# store 4 utility levels of price
+utility_price <- c(0, parEst[6:8])
+# plot the utility scores
+# create a scatter plot
+plot(x = utility_price, 
+type = "b", 
+lwd = "2", 
+col = "red", 
+xlab = "price/USD", 
+ylab = "Utility", 
+ylim = c(-2, 0), 
+xaxt = "n", 
+main = "Price") 
+# here I label the tick marks of the x-axis
+axis(1, 
+at = 1:4, 
+labels = c("399", "599", "799","949")) 
+```
+
+2) Relative importance of attribute
+```{r}
+# create an empty data frame
+importTable <- data.frame(Attribute = c("Screen", "Storage", "Price", "Total"),
+Range = c(0, 0, 0, 0)) # range column is only 0 now
+# print it
+importTable
+```
+
+Calculate range of screen and store it into table
+```{r}
+# Store part-worths values of different screen size levels
+part_worths_screen <- c(0, parEst[1:2])
+#Print it
+part_worths_screen
+```
+
+```{r}
+# Calculate the range of screen size
+range_screen <- abs(max(part_worths_screen) - min(part_worths_screen))
+# copy range of speed to the table
+importTable$Range[importTable$Attribute == "Screen"] <- range_screen
+```
+
+Calculate range of storage and store it into table
+```{r}
+# Store part-worths values of different storage levels
+part_worths_storage <- c(0, parEst[3:5])
+#Print it
+part_worths_storage
+```
+
+```{r}
+# Calculate the range of storage
+range_storage <- abs(max(part_worths_storage) - min(part_worths_storage))
+# copy range of speed to the table
+importTable$Range[importTable$Attribute == "Storage"] <- range_storage
+```
+
+Calculate range of price and store it into table
+```{r}
+# Store part-worths values of different storage levels
+part_worths_price <- c(0, parEst[6:8])
+#Print it
+part_worths_storage
+```
+
+```{r}
+# Calculate the range of storage
+range_price <- abs(max(part_worths_price) - min(part_worths_price))
+# copy range of speed to the table
+importTable$Range[importTable$Attribute == "Price"] <- range_price
+```
+
+Then we compute the total ranges across all attributes:
+```{r}
+# total ranges
+importTable$Range[importTable$Attribute == "Total"] <- range_screen + range_storage + range_price
+# print it
+importTable
+```
+
+Then we compute relative importance
+```{r}
+# relative importance
+importTable$Relative_Importance <- (importTable$Range/(range_screen + range_storage + range_price))*100
+# print it
+importTable
+```
+
+Finally we plot the relative importance of these attributes
+```{r}
+barplot(height = importTable$Relative_Importance[1:3], 
+horiz = TRUE, 
+col = "darkblue", 
+names.arg = c("screen", "storage", "price"), 
+main = "Relative importance by attribute") 
+```
+
+From the bar chart we can see that, IV-storage has the highest value of relative importance and IV-screen has the lowest value, so we can conclude that storage is the most important factor and screen is the least important factor.
+
+From the 1) part we can see that, 12.9 inch has highest utility among all the other screen size, 512 GB has highest utility among all the other storage capacity, and 399 has highest utility among all the other prices. As a result, tablets with larger screen size, larger storage capacity and lower price will be more ideal. A tablet with 12.9 inch screen size, 512 GB storage capacity and sold for 399 USD has the highest utility among all the combinations. This tablet is the most ideal tablet.
